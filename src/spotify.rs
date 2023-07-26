@@ -127,9 +127,11 @@ impl Spotify {
         Ok(())
     }
 
-    /// Generate the librespot [SessionConfig] used when creating a [Session].
-    pub fn session_config(cfg: &config::Config) -> SessionConfig {
-        let mut session_config = SessionConfig::default();
+    pub fn session_config() -> SessionConfig {
+        let mut session_config = librespot_core::SessionConfig {
+            client_id: config::CLIENT_ID.to_string(),
+            ..Default::default()
+        };
         match env::var("http_proxy") {
             Ok(proxy) => {
                 info!("Setting HTTP proxy {}", proxy);
@@ -143,17 +145,13 @@ impl Spotify {
         session_config
     }
 
-    /// Test whether `credentials` are valid Spotify credentials.
-    pub fn test_credentials(
-        cfg: &config::Config,
-        credentials: Credentials,
-    ) -> Result<Session, SessionError> {
-        let config = Self::session_config(cfg);
+    pub fn test_credentials(credentials: Credentials) -> Result<Session, librespot_core::Error> {
+        let config = Self::session_config();
+        let _guard = ASYNC_RUNTIME.enter();
+        let session = Session::new(config, None);
         ASYNC_RUNTIME
-            .get()
-            .unwrap()
-            .block_on(Session::connect(config, credentials, None, true))
-            .map(|r| r.0)
+            .block_on(session.connect(credentials, true))
+            .map(|_| session)
     }
 
     /// Create a [Session] that respects the user configuration in `cfg` and with the given
@@ -161,7 +159,7 @@ impl Spotify {
     async fn create_session(
         cfg: &config::Config,
         credentials: Credentials,
-    ) -> Result<Session, SessionError> {
+    ) -> Result<Session, librespot_core::Error> {
         let librespot_cache_path = config::cache_path("librespot");
         let audio_cache_path = if let Some(false) = cfg.values().audio_cache {
             None
@@ -178,10 +176,9 @@ impl Spotify {
         )
         .expect("Could not create cache");
         debug!("opening spotify session");
-        let session_config = Self::session_config(cfg);
-        Session::connect(session_config, credentials, Some(cache), true)
-            .await
-            .map(|r| r.0)
+        let session_config = Self::session_config();
+        let session = Session::new(session_config, Some(cache));
+        session.connect(credentials, true).await.map(|_| session)
     }
 
     /// Create and initialize the requested audio backend.
@@ -248,12 +245,13 @@ impl Spotify {
         mixer.set_volume(volume);
 
         let audio_format: librespot_playback::config::AudioFormat = Default::default();
-        let (player, player_events) = Player::new(
+        let player = Player::new(
             player_config,
             session.clone(),
             mixer.get_soft_volume(),
             move || (backend)(cfg.values().backend_device.clone(), audio_format),
         );
+        let player_events = player.get_player_event_channel();
 
         let mut worker = Worker::new(
             events.clone(),
