@@ -2,7 +2,6 @@ use crate::events::{Event, EventManager};
 use crate::model::playable::Playable;
 use crate::queue::QueueEvent;
 use crate::spotify::PlayerEvent;
-use futures::channel::oneshot;
 use futures::Future;
 use futures::FutureExt;
 use librespot_core::session::Session;
@@ -65,15 +64,7 @@ impl Worker {
         }
     }
 
-impl Drop for Worker {
-    fn drop(&mut self) {
-        debug!("Worker thread is shutting down, stopping player");
-        self.player.stop();
-    }
-}
-
-impl Worker {
-    async fn get_token(session: Session, sender: oneshot::Sender<Option<Token>>) {
+    async fn get_token(session: Session, sender: Sender<Option<Token>>) {
         let scopes = "user-read-private,playlist-read-private,playlist-read-collaborative,playlist-modify-public,playlist-modify-private,user-follow-modify,user-follow-read,user-library-read,user-library-modify,user-top-read,user-read-recently-played";
         session
             .token_provider()

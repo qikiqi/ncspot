@@ -9,7 +9,6 @@ use librespot_core::authentication::Credentials;
 use librespot_core::cache::Cache;
 use librespot_core::config::SessionConfig;
 use librespot_core::session::Session;
-use librespot_core::session::SessionError;
 use librespot_playback::audio_backend;
 use librespot_playback::audio_backend::SinkBuilder;
 use librespot_playback::config::Bitrate;
@@ -127,7 +126,7 @@ impl Spotify {
         Ok(())
     }
 
-    pub fn session_config() -> SessionConfig {
+    pub fn session_config(cfg: &config::Config) -> SessionConfig {
         let mut session_config = librespot_core::SessionConfig {
             client_id: config::CLIENT_ID.to_string(),
             ..Default::default()
@@ -145,11 +144,15 @@ impl Spotify {
         session_config
     }
 
-    pub fn test_credentials(credentials: Credentials) -> Result<Session, librespot_core::Error> {
-        let config = Self::session_config();
-        let _guard = ASYNC_RUNTIME.enter();
+    pub fn test_credentials(
+        cfg: &config::Config,
+        credentials: Credentials,
+    ) -> Result<Session, librespot_core::Error> {
+        let config = Self::session_config(cfg);
         let session = Session::new(config, None);
         ASYNC_RUNTIME
+            .get()
+            .unwrap()
             .block_on(session.connect(credentials, true))
             .map(|_| session)
     }
@@ -176,7 +179,7 @@ impl Spotify {
         )
         .expect("Could not create cache");
         debug!("opening spotify session");
-        let session_config = Self::session_config();
+        let session_config = Self::session_config(cfg);
         let session = Session::new(session_config, Some(cache));
         session.connect(credentials, true).await.map(|_| session)
     }
